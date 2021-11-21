@@ -19,9 +19,9 @@ use serenity::{
 mod most;
 use most::*;
 
-        #[group]
-        #[commands("echo")]
-        struct Most;
+#[group]
+#[commands("echo")]
+struct Most;
 
 #[tokio::main]
 async fn main() -> Result<()> {
