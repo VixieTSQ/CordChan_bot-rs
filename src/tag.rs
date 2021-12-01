@@ -1,87 +1,99 @@
-use std::io::prelude::*;
-use std::fs::File;
-use std::fs::OpenOptions;
 use std::collections::HashMap;
+use std::fs::{remove_file, File, OpenOptions};
+use std::io::prelude::*;
 
-use anyhow::Result;
-use serenity::{client::Context, framework::{
-    standard::{
-        CommandResult, 
-        macros::command
-        }
-    }, model::{channel::Message}};
+use anyhow::{anyhow, Result};
+use serenity::{
+    client::Context,
+    framework::standard::{macros::command, CommandResult},
+    model::channel::Message,
+};
 
 #[command]
-pub async fn tag(ctx: &Context, msg: &Message) -> CommandResult{
+pub async fn tag(ctx: &Context, msg: &Message) -> CommandResult {
     let content: Vec<&str> = msg.content.trim().split(" ").collect();
-    let mut serialized = String::new();
-    let file = File::open("tags.json");
+    let file = File::open("tags.ron");
     let mut tags: HashMap<&str, &str> = HashMap::new();
-    if file.is_err() {File::create("tags.json")?;} else {
+    let mut serialized = String::new();
+    if file.is_ok() {
         file?.read_to_string(&mut serialized)?;
-        tags = serde_json::from_str(&serialized)?;
+        tags = ron::from_str(&serialized)?;
     }
     if content.len() == 1 {
-        msg.channel_id.say(
-            ctx, 
-            "!tag { add, remove, \\_ }\n\\_ = tag name"
-        ).await?;
+        msg.channel_id
+            .say(ctx, "!tag { add, remove, \\_ }\n\\_ = tag name")
+            .await?;
         return Ok(());
     }
-    match content[1] {
-        "add" => add(ctx, msg, content, tags).await?,
-        "remove" => remove(ctx, msg, content, tags).await?,
-        _ => print(ctx, msg, content, tags).await?
+    let result = match content[1] {
+        "add" => add(content, tags),
+        "remove" => remove(content, tags),
+        _ => {
+            if tags.get(content[1]).is_none() {
+                msg.reply(ctx, "That tag does not exist.");
+                return Ok(());
+            } else {
+                msg.channel_id
+                    .say(ctx, tags.get(content[1]).unwrap())
+                    .await?;
+                return Ok(());
+            }
+        }
+    };
+    match result {
+        Ok(tags) => {
+            remove_file("tags.ron");
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open("tags.ron")?;
+            file.write(ron::to_string(&tags).unwrap().as_bytes())
+                .unwrap();
+            msg.reply(ctx, "Done!").await;
+            return Ok(());
+        }
+        Err(err) => {
+            msg.reply(ctx, err).await;
+            return Ok(());
+        }
     }
-    Ok(())
 }
-async fn add(ctx: &Context, msg: &Message, content: Vec<&str>, mut tags: HashMap<&str, &str>) -> Result<()> {
+
+// Add a provided entry to tags from content's index 2 as the key and index 3 and beyond joined as a space seperated string.
+// If the content doesn't provide a key or content, or the key is 'add' or 'remove' then err, otherwise ok with updated tags.
+fn add<'a>(
+    content: Vec<&'a str>,
+    mut tags: HashMap<&'a str, &'a str>,
+) -> Result<HashMap<&'a str, &'a str>> {
     if content.len() <= 2 {
-        msg.channel_id.say(
-            ctx, 
-            "Tag cannot be null\n !tag add {name} {content}"
-        ).await?;
-        return Ok(());
+        return Err(anyhow!(
+            "Tag cannot be null\n !tag add {{name}} {{content}}"
+        ));
     }
     if content[2] == "add" || content[2] == "remove" {
-        msg.channel_id.say(
-            ctx, 
-            "Tag cannot be 'add' or 'remove'\n !tag add {name} {content}"
-        ).await?;
-        return Ok(());
+        return Err(anyhow!(
+            "Tag cannot be 'add' or 'remove'\n !tag add {{name}} {{content}}"
+        ));
     }
-    let tag_content = &content[3..].join(" ")[..];
-    tags.insert(&content[2], &tag_content);
-    let mut file = OpenOptions::new().write(true).open("tags.json")?;
-    file.write(serde_json::to_string(&tags).unwrap().as_bytes()).unwrap();
-    msg.reply(ctx, "Done!").await?;
-    Ok(())
+    {
+        tags.insert(&content[2], &content[3..].join(" ")[..]);
+    }
+    Ok(tags)
 }
-async fn remove(ctx: &Context, msg: &Message, content: Vec<&str>, mut tags: HashMap<&str, &str>) -> Result<()> {
+
+/// Remove a provided entry from tags by it's key given from the second index of content.
+/// If the content doesn't provide a name then Err. Otherwise Ok with updated tags.
+fn remove<'a>(
+    content: Vec<&str>,
+    mut tags: HashMap<&'a str, &'a str>,
+) -> Result<HashMap<&'a str, &'a str>> {
     if content.len() <= 2 {
-        msg.channel_id.say(
-            ctx, 
-            "Tag cannot be null\n !tag add {name} {content}"
-        ).await?;
-        return Ok(());
+        return Err(anyhow!(
+            "Tag cannot be null\n !tag add {{name}} {{content}}"
+        ));
     }
     if tags.remove(content[2]).is_none() {
-        msg.reply(ctx, "That tag doesn't exist.").await?;
-        return Ok(());
+        return Err(anyhow!("That tag doesn't exist."));
     }
-    let mut file = OpenOptions::new().write(true).open("tags.json")?;
-    file.write(serde_json::to_string(&tags).unwrap().as_bytes()).unwrap();
-    msg.reply(ctx, "Done!").await?;
-    Ok(())
-}
-async fn print(ctx: &Context, msg: &Message, content: Vec<&str>, tags: HashMap<&str, &str>) -> Result<()> {
-    if tags.get(content[1]).is_none() {
-        msg.reply(ctx, "That tag doesn't exist.").await?;
-        return Ok(());
-    }
-    msg.channel_id.say(
-        ctx, 
-        tags.get(content[1]).unwrap()
-    ).await?;
-    Ok(())
+    Ok(tags)
 }

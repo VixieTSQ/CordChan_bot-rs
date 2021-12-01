@@ -1,26 +1,22 @@
 #![allow(non_snake_case)]
 
-use std::io::prelude::*;
 use std::fs::File;
+use std::io::prelude::*;
 
 use anyhow::Result;
 use serenity::{
-    Client, 
-    framework::{
-        StandardFramework, 
-        standard::{ 
-            macros::group
-            }
-        }, };
+    framework::{standard::macros::group, StandardFramework},
+    Client,
+};
 
-mod most;
+mod general;
 mod tag;
-use most::*;
+use general::*;
 use tag::*;
 
 #[group]
 #[commands("echo")]
-struct Most;
+struct General;
 
 #[group]
 #[commands("tag")]
@@ -33,13 +29,11 @@ async fn main() -> Result<()> {
     file.read_to_string(&mut token)?;
 
     let framework = StandardFramework::new()
-    .configure(|c|{
-        c.prefix("!")
-    })
-    .group(&MOST_GROUP).group(&TAG_GROUP);
+        .configure(|c| c.prefix("!"))
+        .group(&GENERAL_GROUP)
+        .group(&TAG_GROUP);
     let mut client = Client::builder(token).framework(framework).await?;
     client.start().await?;
 
     return Ok(());
-
 }
