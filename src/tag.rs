@@ -75,9 +75,7 @@ fn add<'a>(
             "Tag cannot be 'add' or 'remove'\n !tag add {{name}} {{content}}"
         ));
     }
-    {
-        tags.insert(&content[2], &content[3..].join(" ")[..]);
-    }
+    tags.insert(&content[2], &content[3..].join(" ")[..]);
     Ok(tags)
 }
 
